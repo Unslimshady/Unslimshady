@@ -387,10 +387,6 @@ a { color: inherit; }
 .chapters button:hover { color: var(--on-ink); }
 .chapters button[aria-current="step"] { color: var(--on-ink); border-color: var(--signal-glow); box-shadow: inset 0 -3px 0 var(--signal-glow); }
 
-/* Coverage colours as in the VanGuard app; blind is also hatched so it never relies on colour alone */
-.key--g { background: #40B068; }
-.key--b { background: #4288DE; }
-.key--r { background: repeating-linear-gradient(135deg, #D64854 0 2px, rgb(214 72 84 / 0.3) 2px 5px); }
 .player__legend {
   position: absolute; left: 12px; bottom: 12px; display: flex; flex-wrap: wrap; gap: 6px 14px;
   padding: 8px 12px; background: rgb(11 23 38 / 0.82); border: 1px solid var(--ink-line); border-radius: var(--radius);

@@ -2,9 +2,9 @@
    1. Hero: an illustrative floor plan where each camera's field of view is ray-cast
       against walls and columns, blind floor is hatched, and the configuration can be
       switched between "as drawn" and "VanGuard settings" (same cameras, same positions).
-   2. VanGuard pipeline: the same building read as DXF lines, raised in 3D with camera
-      models (three.js), its coverage traced as light volumes and a floor map, then
-      optimised. A 2D canvas version runs where WebGL is unavailable.
+   2. VanGuard pipeline: the same building as an isometric architectural model. DXF
+      lines, walls and furniture rise, a close look at one camera, light beams and a
+      floor coverage map, then the cameras are re-aimed.
    3. DORI: a face rendered at the pixel density a 4K dome delivers at each distance.
    4. Sentinel: photos become a 3D point twin, the view drops into a distorted CCTV image,
       and a person is detected.
@@ -481,7 +481,9 @@
   }
 
   /* ------------------------------------------------------------------ */
-  /* VanGuard pipeline: DXF lines, 3D extrusion, coverage, optimisation  */
+  /* VanGuard pipeline: an isometric architectural model. DXF lines,     */
+  /* walls and furniture rise, a close look at one camera, light beams   */
+  /* and a floor coverage map, then the same cameras are re-aimed.       */
   /* ------------------------------------------------------------------ */
   function initPipeline() {
     var root = document.getElementById('pipeline');
@@ -490,448 +492,62 @@
     var ctx = canvas.getContext('2d');
     var readout = document.getElementById('pipeline-cov');
     var readoutBox = root.querySelector('.player__readout');
-
+    var legend = root.querySelector('.player__legend');
     var C = {
       bg: token('--ink', '#0B1726'),
-      floor: token('--ink-2', '#102035'),
-      grid: token('--ink-line', '#273E5A'),
       line: token('--on-ink-soft', '#B3C0CE'),
       mute: token('--on-ink-mute', '#8394A9'),
-      glow: token('--signal-glow', '#82A9FF'),
-      blind: token('--blind', '#EC6A3A')
+      glow: token('--signal-glow', '#82A9FF')
     };
 
-    var W = 900, H = 560, S = 0.9, WALL = 36;
-    var OX = 372, OY = 58;
-    function iso(x, y, z) { return [OX + (x - y) * 0.866 * S, OY + (x + y) * 0.5 * S - z * S]; }
+    var W = 900, H = 560, S = 0.9, WALL = 32, MOUNT = 27;
+    var OX = 372, OY = 64, CX = 0.866 * S, CY = 0.5 * S;
+    function iso(x, y, z) { return [OX + (x - y) * CX, OY + (x + y) * CY - z * S]; }
+    var rnd = seeded(23);
 
-    var A = PLAN.coverage(0), B = PLAN.coverage(1);
-    var cells = [];
-    var idx = 0;
-    for (var cy = PLAN.FLOOR.y + 5; cy < PLAN.FLOOR.y + PLAN.FLOOR.h; cy += 10) {
-      for (var cx = PLAN.FLOOR.x + 5; cx < PLAN.FLOOR.x + PLAN.FLOOR.w; cx += 10) {
-        var a = A.cells[idx], b = B.cells[idx];
-        idx++;
-        if (a < 0) continue;
-        cells.push({
-          x: cx, y: cy, a: a, b: b,
-          reveal: ((cx + cy - 40) / 1000) * 0.72,
-          flip: 8.35 + 1.9 * hash01(idx)
-        });
-      }
-    }
-    var total = cells.length;
-
-    var walls = PLAN.walls.slice(0, PLAN.structural).map(function (w) {
-      return { w: w, depth: (w[0] + w[2] + w[1] + w[3]) / 2, alongX: w[1] === w[3] };
-    });
-    var drawOrder = walls.slice().sort(function (p, q) { return p.depth - q.depth; });
-
-    var pattern = null, patternScale = 0;
-
-    var phases = [
-      { start: 0, end: 2.6, caption: 'Reads the architect’s DXF and the camera layout.' },
-      { start: 2.6, end: 5.0, caption: 'Builds walls, openings and columns in 3D.' },
-      { start: 5.0, end: 8.0, caption: 'Tests every square metre against every camera.' },
-      { start: 8.0, end: 13.0, caption: 'Re-aims the same cameras. No covered floor is lost.' }
-    ];
-
-    function rhombus(x, y) {
-      var p0 = iso(x - 5, y - 5, 0), p1 = iso(x + 5, y - 5, 0), p2 = iso(x + 5, y + 5, 0), p3 = iso(x - 5, y + 5, 0);
-      ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.lineTo(p3[0], p3[1]); ctx.closePath();
-    }
-
-    function wallQuad(w, h) {
-      var p0 = iso(w[0], w[1], 0), p1 = iso(w[2], w[3], 0), p2 = iso(w[2], w[3], h), p3 = iso(w[0], w[1], h);
-      ctx.beginPath();
-      ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.lineTo(p3[0], p3[1]); ctx.closePath();
-    }
-
-    function draw(t, scale) {
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.fillStyle = C.bg;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.setTransform(scale, 0, 0, scale, 0, 0);
-      if (!pattern || patternScale !== scale) { pattern = hatchPattern(ctx, C.blind); patternScale = scale; }
-
-      var F = PLAN.FLOOR;
-      var pPlan = clamp01(t / 2.6);
-      var h = WALL * easeInOut(clamp01((t - 2.6) / 2.2));
-      var pCov = clamp01((t - 5.0) / 2.6);
-      var kAim = easeInOut(clamp01((t - 8.2) / 2.1));
-
-      // floor slab
-      var c0 = iso(F.x, F.y, 0), c1 = iso(F.x + F.w, F.y, 0), c2 = iso(F.x + F.w, F.y + F.h, 0), c3 = iso(F.x, F.y + F.h, 0);
-      ctx.fillStyle = C.floor;
-      ctx.beginPath();
-      ctx.moveTo(c0[0], c0[1]); ctx.lineTo(c1[0], c1[1]); ctx.lineTo(c2[0], c2[1]); ctx.lineTo(c3[0], c3[1]); ctx.closePath();
-      ctx.fill();
-
-      // 5 m grid
-      ctx.strokeStyle = C.grid;
-      ctx.lineWidth = 0.7;
-      ctx.beginPath();
-      for (var gx = F.x + 50; gx < F.x + F.w; gx += 50) { var g0 = iso(gx, F.y, 0), g1 = iso(gx, F.y + F.h, 0); ctx.moveTo(g0[0], g0[1]); ctx.lineTo(g1[0], g1[1]); }
-      for (var gy = F.y + 50; gy < F.y + F.h; gy += 50) { var g2 = iso(F.x, gy, 0), g3 = iso(F.x + F.w, gy, 0); ctx.moveTo(g2[0], g2[1]); ctx.lineTo(g3[0], g3[1]); }
-      ctx.stroke();
-
-      // coverage cells, batched by state
-      if (t >= 5.0) {
-        var buckets = { blind: [], one: [], multi: [], gained: [] };
-        var covered = 0;
-        for (var i = 0; i < cells.length; i++) {
-          var cell = cells[i];
-          if (t < 8.0 && pCov < cell.reveal) continue;
-          var state = t >= cell.flip ? cell.b : cell.a;
-          if (state > 0) covered++;
-          if (state === 0) buckets.blind.push(cell);
-          else if (t >= cell.flip && cell.a === 0 && t - cell.flip < 0.6) buckets.gained.push(cell);
-          else if (state === 1) buckets.one.push(cell);
-          else buckets.multi.push(cell);
+    /* floor finishes, painted once in plan space (2 px per 10 cm) */
+    var PX = 2;
+    var floorLayer = document.createElement('canvas');
+    floorLayer.width = 600 * PX; floorLayer.height = 400 * PX;
+    (function paintFloor() {
+      var g = floorLayer.getContext('2d');
+      g.scale(PX, PX);
+      g.translate(-20, -20);
+      var finish = {
+        'Main hall': { c: '#1C2E46', grid: 12 }, 'Waiting area': { c: '#1C2E46', grid: 12 }, 'Corridor': { c: '#18293F', grid: 12 },
+        'Office': { c: '#22324A', grid: 0 }, 'Staff room': { c: '#22324A', grid: 0 }, 'Security office': { c: '#1F3048', grid: 6 },
+        'Storage': { c: '#172536', grid: 0 }, 'Server room': { c: '#131F2E', grid: 6 }
+      };
+      PLAN.rooms.forEach(function (r) {
+        var f = finish[r.name] || finish['Main hall'];
+        g.fillStyle = f.c;
+        g.fillRect(r.x, r.y, r.w, r.h);
+        for (var i = 0; i < r.w * r.h / 18; i++) {
+          g.fillStyle = 'rgba(200, 215, 235, ' + (0.015 + rnd() * 0.045) + ')';
+          g.fillRect(r.x + rnd() * r.w, r.y + rnd() * r.h, 0.6, 0.6);
         }
-        [['blind', pattern], ['one', 'rgba(47, 107, 240, 0.55)'], ['multi', 'rgba(130, 169, 255, 0.72)'], ['gained', 'rgba(190, 212, 255, 0.95)']].forEach(function (pair) {
-          var list = buckets[pair[0]];
-          if (!list.length) return;
-          ctx.fillStyle = pair[1];
-          ctx.beginPath();
-          list.forEach(function (c) { rhombus(c.x, c.y); });
-          ctx.fill();
-        });
-        if (t >= 8.0) readout.textContent = (covered / total * 100).toFixed(1) + '%';
-        else readout.textContent = (A.share * 100).toFixed(1) + '%';
-      }
-      if (readoutBox) readoutBox.style.opacity = t >= 6.2 ? 1 : 0;
+        if (f.grid) {
+          g.strokeStyle = 'rgba(150, 175, 210, 0.2)';
+          g.lineWidth = 0.35;
+          g.beginPath();
+          for (var x = r.x + f.grid; x < r.x + r.w; x += f.grid) { g.moveTo(x, r.y); g.lineTo(x, r.y + r.h); }
+          for (var y = r.y + f.grid; y < r.y + r.h; y += f.grid) { g.moveTo(r.x, y); g.lineTo(r.x + r.w, y); }
+          g.stroke();
+        }
+      });
+    })();
 
-      // walls: DXF lines first, then extruded, translucent volumes
-      if (h < 0.5) {
-        ctx.strokeStyle = C.line;
-        ctx.lineWidth = 1.6;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        walls.forEach(function (o, i) {
-          var f = clamp01((pPlan - (i / walls.length) * 0.7) / 0.3);
-          if (f <= 0) return;
-          var w = o.w, p0 = iso(w[0], w[1], 0), p1 = iso(w[0] + (w[2] - w[0]) * f, w[1] + (w[3] - w[1]) * f, 0);
-          ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]);
-        });
-        ctx.stroke();
-        ctx.fillStyle = C.line;
-        PLAN.columns.forEach(function (c) {
-          if (pPlan < 0.6) return;
-          var q0 = iso(c[0], c[1], 0), q1 = iso(c[0] + PLAN.COL, c[1], 0), q2 = iso(c[0] + PLAN.COL, c[1] + PLAN.COL, 0), q3 = iso(c[0], c[1] + PLAN.COL, 0);
-          ctx.beginPath(); ctx.moveTo(q0[0], q0[1]); ctx.lineTo(q1[0], q1[1]); ctx.lineTo(q2[0], q2[1]); ctx.lineTo(q3[0], q3[1]); ctx.closePath(); ctx.fill();
-        });
-        // file label, like a CAD import
-        ctx.fillStyle = C.mute;
-        ctx.font = '500 13px "IBM Plex Mono", ui-monospace, monospace';
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'alphabetic';
-        ctx.globalAlpha = clamp01(pPlan * 3);
-        ctx.fillText('ground_floor.dxf · ' + Math.round(clamp01(pPlan / 0.7) * walls.length) + ' walls · 12 cameras', 24, H - 24);
-        ctx.globalAlpha = 1;
-      } else {
-        drawOrder.forEach(function (o) {
-          wallQuad(o.w, h);
-          ctx.fillStyle = o.alongX ? 'rgba(238, 242, 246, 0.10)' : 'rgba(238, 242, 246, 0.17)';
-          ctx.fill();
-          ctx.strokeStyle = 'rgba(179, 192, 206, 0.35)';
-          ctx.lineWidth = 0.8;
-          ctx.stroke();
-          var t0 = iso(o.w[0], o.w[1], h), t1 = iso(o.w[2], o.w[3], h);
-          ctx.strokeStyle = C.line;
-          ctx.lineWidth = 1.6;
-          ctx.beginPath(); ctx.moveTo(t0[0], t0[1]); ctx.lineTo(t1[0], t1[1]); ctx.stroke();
-        });
-        PLAN.columns.forEach(function (c) {
-          var x = c[0], y = c[1], s = PLAN.COL;
-          [[x, y + s, x + s, y + s], [x + s, y, x + s, y + s]].forEach(function (w) {
-            wallQuad(w, h);
-            ctx.fillStyle = 'rgba(179, 192, 206, 0.55)';
-            ctx.fill();
-          });
-          var r0 = iso(x, y, h), r1 = iso(x + s, y, h), r2 = iso(x + s, y + s, h), r3 = iso(x, y + s, h);
-          ctx.fillStyle = C.line;
-          ctx.beginPath(); ctx.moveTo(r0[0], r0[1]); ctx.lineTo(r1[0], r1[1]); ctx.lineTo(r2[0], r2[1]); ctx.lineTo(r3[0], r3[1]); ctx.closePath(); ctx.fill();
-        });
-      }
-
-      // cameras, riding on top of the walls
-      var camAlpha = clamp01((pPlan - 0.7) / 0.2);
-      if (camAlpha > 0) {
-        ctx.globalAlpha = camAlpha;
-        PLAN.cams.forEach(function (cam) {
-          var p = PLAN.pose(cam, kAim);
-          var a = p.dir * Math.PI / 180, z = h + 3;
-          var o = iso(p.x, p.y, z), e = iso(p.x + Math.cos(a) * 22, p.y + Math.sin(a) * 22, z);
-          ctx.strokeStyle = C.glow;
-          ctx.lineWidth = 2.2;
-          ctx.beginPath(); ctx.moveTo(o[0], o[1]); ctx.lineTo(e[0], e[1]); ctx.stroke();
-          ctx.fillStyle = C.bg;
-          ctx.beginPath(); ctx.arc(o[0], o[1], 4.6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-        });
-        ctx.globalAlpha = 1;
-      }
-    }
-
-    makePlayer({ root: root, canvas: canvas, phases: phases, w: W, h: H, draw: draw, rest: 12.9, caption: document.getElementById('pipeline-caption') });
-  }
-
-  /* ------------------------------------------------------------------ */
-  /* VanGuard pipeline in 3D (three.js): textured building, camera       */
-  /* models, light volumes and a floor coverage map. Falls back to the   */
-  /* 2D version when WebGL or three.js is unavailable.                   */
-  /* ------------------------------------------------------------------ */
-  function initPipeline3D() {
-    var root = document.getElementById('pipeline');
-    var canvas = document.getElementById('pipeline-canvas');
-    var THREE = window.THREE;
-    if (!root || !canvas || !THREE) return false;
-    var probe = document.createElement('canvas');
-    if (!(probe.getContext('webgl2') || probe.getContext('webgl'))) return false;
-
-    var renderer;
-    try { renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true }); } catch (e) { return false; }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.outputEncoding = THREE.sRGBEncoding;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.0;
-    var INK = token('--ink', '#0B1726');
-    renderer.setClearColor(INK);
-
-    var W = 900, H = 560;
-    var scene = new THREE.Scene();
-    var view = new THREE.PerspectiveCamera(34, W / H, 0.1, 400);
-
-    // Plan units (10 cm) to metres, building centred on the origin.
-    function X(u) { return (u - 320) / 10; }
-    function Z(v) { return (v - 220) / 10; }
-    var WALL_H = 3.2, MOUNT = 2.75, MODEL_SCALE = 2.3;
-    var rnd = seeded(11);
-
-    /* textures, painted procedurally */
-    function canvasTexture(size, paint, rx, ry) {
-      var c = document.createElement('canvas');
-      c.width = c.height = size;
-      paint(c.getContext('2d'), size);
-      var t = new THREE.CanvasTexture(c);
-      t.wrapS = t.wrapT = THREE.RepeatWrapping;
-      t.repeat.set(rx, ry);
-      t.encoding = THREE.sRGBEncoding;
-      t.anisotropy = renderer.capabilities.getMaxAnisotropy();
-      return t;
-    }
-    function speckle(g, s, base, n, lo, span, alpha) {
-      g.fillStyle = base;
-      g.fillRect(0, 0, s, s);
-      for (var i = 0; i < n; i++) {
-        var v = (lo + rnd() * span) | 0;
-        g.fillStyle = 'rgba(' + v + ',' + v + ',' + (v + 3) + ',' + (alpha * (0.4 + rnd() * 0.6)) + ')';
-        var r = 0.5 + rnd() * 1.6;
-        g.fillRect(rnd() * s, rnd() * s, r, r);
-      }
-    }
-    // 60 cm terrazzo tiles: 4 x 4 tiles per 2.4 m texture repeat
-    var floorTex = canvasTexture(512, function (g, s) {
-      speckle(g, s, '#d5d8dc', 14000, 150, 90, 0.55);
-      for (var ty = 0; ty < 4; ty++) for (var tx = 0; tx < 4; tx++) {
-        g.fillStyle = 'rgba(40, 50, 60, ' + (rnd() * 0.05) + ')';
-        g.fillRect(tx * s / 4, ty * s / 4, s / 4, s / 4);
-      }
-      g.strokeStyle = '#9aa1a9';
-      g.lineWidth = 2.5;
-      g.beginPath();
-      for (var k = 0; k <= 4; k++) { g.moveTo(k * s / 4, 0); g.lineTo(k * s / 4, s); g.moveTo(0, k * s / 4); g.lineTo(s, k * s / 4); }
-      g.stroke();
-    }, 60 / 2.4, 40 / 2.4);
-    var concreteTex = canvasTexture(256, function (g, s) { speckle(g, s, '#c4c9cf', 6000, 150, 80, 0.45); }, 1, 2);
-
-    /* materials */
-    var matFloor = new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.6, metalness: 0.0, color: new THREE.Color('#223149') });
-    var matWall = new THREE.MeshStandardMaterial({ roughness: 0.9, color: '#eef0f2' });
-    var matCap = new THREE.MeshStandardMaterial({ color: '#2a3441', roughness: 0.8 });
-    var matColumn = new THREE.MeshStandardMaterial({ map: concreteTex, roughness: 0.85 });
-    var matWhite = new THREE.MeshStandardMaterial({ color: '#f4f5f7', roughness: 0.35, metalness: 0.08 });
-    var matBracket = new THREE.MeshStandardMaterial({ color: '#d4d8de', roughness: 0.45, metalness: 0.25 });
-    var matGrey = new THREE.MeshStandardMaterial({ color: '#2b3038', roughness: 0.4, metalness: 0.3 });
-    var matGlass = new THREE.MeshStandardMaterial({ color: '#0a0e13', roughness: 0.06, metalness: 0.7 });
-    var matSmoke = new THREE.MeshStandardMaterial({ color: '#141a22', roughness: 0.05, metalness: 0.55, transparent: true, opacity: 0.9 });
-    var matLensRing = new THREE.MeshBasicMaterial({ color: '#5b8cff' });
-
-    /* lights */
-    scene.add(new THREE.HemisphereLight('#dfe7f2', '#27303d', 0.5));
-    var sun = new THREE.DirectionalLight('#fff6ea', 1.45);
-    sun.position.set(-24, 40, 18);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
-    sun.shadow.camera.left = -40; sun.shadow.camera.right = 40;
-    sun.shadow.camera.top = 32; sun.shadow.camera.bottom = -32;
-    sun.shadow.camera.near = 10; sun.shadow.camera.far = 120;
-    sun.shadow.bias = -0.0004;
-    scene.add(sun);
-
-    /* ground, floor slab */
-    var ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.ShadowMaterial({ opacity: 0.45 }));
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -0.03;
-    ground.receiveShadow = true;
-    scene.add(ground);
-    var floor = new THREE.Mesh(new THREE.PlaneGeometry(60, 40), matFloor);
-    floor.rotation.x = -Math.PI / 2;
-    floor.receiveShadow = true;
-    scene.add(floor);
-
-    /* walls and columns, grouped so they can rise from the floor */
-    var walls = new THREE.Group();
-    scene.add(walls);
-    PLAN.walls.slice(0, PLAN.structural).forEach(function (w, i) {
-      var outer = i < 4, T = outer ? 0.3 : 0.16;
-      var alongX = w[1] === w[3];
-      var len = (alongX ? Math.abs(w[2] - w[0]) : Math.abs(w[3] - w[1])) / 10 + T;
-      var geo = alongX ? new THREE.BoxGeometry(len, WALL_H, T) : new THREE.BoxGeometry(T, WALL_H, len);
-      var mesh = new THREE.Mesh(geo, [matWall, matWall, matCap, matWall, matWall, matWall]);
-      mesh.position.set(X((w[0] + w[2]) / 2), WALL_H / 2, Z((w[1] + w[3]) / 2));
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      walls.add(mesh);
-    });
-    PLAN.columns.forEach(function (c) {
-      var s = PLAN.COL / 10;
-      var mesh = new THREE.Mesh(new THREE.BoxGeometry(s, WALL_H, s), [matColumn, matColumn, matCap, matColumn, matColumn, matColumn]);
-      mesh.position.set(X(c[0]) + s / 2, WALL_H / 2, Z(c[1]) + s / 2);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      walls.add(mesh);
-    });
-
-    /* furniture and people, for scale; they rise with the walls */
-    var matWood = new THREE.MeshStandardMaterial({ color: '#9a7553', roughness: 0.7 });
-    var matMetal = new THREE.MeshStandardMaterial({ color: '#2c323a', roughness: 0.45, metalness: 0.4 });
-    var matFabric = new THREE.MeshStandardMaterial({ color: '#4b5b74', roughness: 0.95 });
-    var matCounter = new THREE.MeshStandardMaterial({ color: '#d9dde2', roughness: 0.5 });
-    var matPlant = new THREE.MeshStandardMaterial({ color: '#4e7a4f', roughness: 0.9 });
-    function piece(w, h, d, m, x, z, y) {
-      var mesh = box(w, h, d, m);
-      mesh.position.set(x, (y || 0) + h / 2, z);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      walls.add(mesh);
-      return mesh;
-    }
-    // offices: desks with screens
-    [[6.5, -15], [11.5, -15], [6.5, -11], [11.5, -11], [20.5, -15], [25.5, -15], [20.5, -11], [25.5, -11]].forEach(function (d) {
-      piece(1.6, 0.74, 0.8, matWood, d[0], d[1]);
-      piece(0.6, 0.38, 0.05, matMetal, d[0], d[1] - 0.2, 0.74);
-    });
-    // server room: racks
-    [5, 7, 9, 11].forEach(function (x) { piece(0.62, 2.0, 1.1, matMetal, x, 12.5); piece(0.62, 2.0, 1.1, matMetal, x, 16.5); });
-    // storage: shelving
-    piece(0.5, 2.1, 6, matMetal, -15.2, 13.5);
-    piece(4, 2.1, 0.5, matMetal, -21, 9.2);
-    // security office: control desk and video wall
-    piece(3.6, 0.76, 0.9, matWood, -6, 16.5);
-    piece(3.2, 1.2, 0.08, matMetal, -6, 19.4, 0.9);
-    // staff room: table
-    piece(2.4, 0.74, 1.1, matWood, 23, 14);
-    // waiting area: benches
-    [[8, -4], [8, -1], [15, -4], [15, -1], [22, -4], [22, -1]].forEach(function (b) { piece(3.4, 0.45, 0.55, matFabric, b[0], b[1]); });
-    // main hall: counters and planters
-    [-24, -19.5, -15].forEach(function (x) { piece(3.2, 1.05, 0.8, matCounter, x, -16.5); });
-    [[-26, -2], [-6, -2]].forEach(function (p) {
-      var pot = cyl(0.55, 0.45, 0.6, matMetal, 20); pot.position.set(p[0], 0.3, p[1]); pot.castShadow = true; walls.add(pot);
-      var leaf = new THREE.Mesh(new THREE.SphereGeometry(0.75, 16, 12), matPlant); leaf.position.set(p[0], 1.1, p[1]); leaf.castShadow = true; walls.add(leaf);
-    });
-    // people
-    var clothes = ['#3b4a63', '#7a5c4a', '#2f3b33', '#8a8f98', '#5b3f52', '#35506b', '#6b6f45'];
-    [[-22, -9], [-17, -12.5], [-10, -6], [-4, -13], [-12, 1.5], [12, -2.5], [19, 2.2]].forEach(function (p, i) {
-      var legs = cyl(0.13, 0.11, 0.8, matMetal, 12); legs.position.set(p[0], 0.4, p[1]);
-      var body = cyl(0.21, 0.17, 0.72, new THREE.MeshStandardMaterial({ color: clothes[i], roughness: 0.9 }), 14); body.position.set(p[0], 1.16, p[1]);
-      var head = new THREE.Mesh(new THREE.SphereGeometry(0.12, 14, 10), new THREE.MeshStandardMaterial({ color: '#c49a7c', roughness: 0.8 })); head.position.set(p[0], 1.66, p[1]);
-      [legs, body, head].forEach(function (m) { m.castShadow = true; walls.add(m); });
-    });
-
-    /* DXF lines drawn on the slab */
-    var linePts = [];
-    PLAN.walls.slice(0, PLAN.structural).forEach(function (w) { linePts.push(X(w[0]), 0.03, Z(w[1]), X(w[2]), 0.03, Z(w[3])); });
-    var lineGeo = new THREE.BufferGeometry();
-    lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(linePts, 3));
-    var lineMat = new THREE.LineBasicMaterial({ color: '#9fc0ff', transparent: true });
-    var dxf = new THREE.LineSegments(lineGeo, lineMat);
-    scene.add(dxf);
-    var segCount = linePts.length / 6;
-
-    /* camera models (facing +x, tilted down), scaled up to read at site scale */
-    function box(w, h, d, m) { return new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); }
-    function cyl(r1, r2, h, m, seg) { return new THREE.Mesh(new THREE.CylinderGeometry(r1, r2, h, seg || 24), m); }
-    function makeBullet() {
-      var g = new THREE.Group();
-      var plate = box(0.03, 0.16, 0.11, matBracket); plate.position.x = -0.02;
-      var arm = cyl(0.018, 0.022, 0.16, matBracket, 12); arm.rotation.z = Math.PI / 2; arm.position.x = 0.06;
-      var head = new THREE.Group(); head.position.x = 0.13; head.rotation.z = -0.36;
-      var body = cyl(0.062, 0.062, 0.3, matWhite); body.rotation.z = Math.PI / 2; body.position.x = 0.12;
-      var bezel = cyl(0.066, 0.066, 0.02, matGrey); bezel.rotation.z = Math.PI / 2; bezel.position.x = 0.275;
-      var glass = new THREE.Mesh(new THREE.CircleGeometry(0.054, 24), matGlass); glass.rotation.y = Math.PI / 2; glass.position.x = 0.2862;
-      var ring = new THREE.Mesh(new THREE.RingGeometry(0.018, 0.024, 24), matLensRing); ring.rotation.y = Math.PI / 2; ring.position.x = 0.2866;
-      var shield = box(0.36, 0.012, 0.15, matWhite); shield.position.set(0.14, 0.075, 0);
-      head.add(body, bezel, glass, ring, shield);
-      g.add(plate, arm, head);
-      return g;
-    }
-    function makeDome() {
-      var g = new THREE.Group();
-      var plate = box(0.03, 0.14, 0.14, matBracket); plate.position.x = -0.02;
-      var arm = cyl(0.02, 0.02, 0.24, matBracket, 12); arm.rotation.z = Math.PI / 2; arm.position.x = 0.1;
-      var neck = cyl(0.028, 0.028, 0.07, matBracket, 16); neck.position.set(0.22, -0.035, 0);
-      var housing = cyl(0.11, 0.11, 0.06, matWhite, 32); housing.position.set(0.22, -0.09, 0);
-      var dome = new THREE.Mesh(new THREE.SphereGeometry(0.092, 32, 16, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), matSmoke);
-      dome.position.set(0.22, -0.12, 0);
-      var lens = new THREE.Mesh(new THREE.SphereGeometry(0.03, 16, 12), matGlass); lens.position.set(0.255, -0.15, 0);
-      g.add(plate, arm, neck, housing, dome, lens);
-      return g;
-    }
-    var DOMES = { 0: 1, 1: 1, 2: 1, 11: 1 };
-    var cams = PLAN.cams.map(function (c, i) {
-      var model = DOMES[i] ? makeDome() : makeBullet();
-      model.traverse(function (o) { if (o.isMesh) o.castShadow = true; });
-      model.position.set(X(c.x), MOUNT, Z(c.y));
-      model.scale.setScalar(0.0001);
-      model.userData.lens = DOMES[i] ? { f: 0.255 * MODEL_SCALE, y: -0.15 * MODEL_SCALE } : { f: 0.4 * MODEL_SCALE, y: -0.14 * MODEL_SCALE };
-      scene.add(model);
-
-      var maxTris = 170;
-      var geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(maxTris * 9), 3));
-      var vol = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: '#4f86ff', transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
-      vol.frustumCulled = false;
-      scene.add(vol);
-      var egeo = new THREE.BufferGeometry();
-      egeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(9), 3));
-      var edge = new THREE.Line(egeo, new THREE.LineBasicMaterial({ color: '#9dbcff', transparent: true, opacity: 0 }));
-      edge.frustumCulled = false;
-      scene.add(edge);
-      return { plan: c, model: model, vol: vol, edge: edge };
-    });
-
-    /* floor coverage map: count cameras per pixel, colour like VanGuard */
+    /* coverage map in plan space: cameras counted per pixel */
     var CW = 600, CH = 400;
     var countCanvas = document.createElement('canvas'); countCanvas.width = CW; countCanvas.height = CH;
     var cctx = countCanvas.getContext('2d', { willReadFrequently: true });
-    var covCanvas = document.createElement('canvas'); covCanvas.width = CW; covCanvas.height = CH;
-    var vctx = covCanvas.getContext('2d');
-    var outImg = vctx.createImageData(CW, CH);
+    var covLayer = document.createElement('canvas'); covLayer.width = CW; covLayer.height = CH;
+    var vctx = covLayer.getContext('2d');
+    var covImg = vctx.createImageData(CW, CH);
     var solid = new Uint8Array(CW * CH);
     PLAN.columns.forEach(function (c) {
       for (var y = c[1] - 20; y < c[1] - 20 + PLAN.COL; y++) for (var x = c[0] - 20; x < c[0] - 20 + PLAN.COL; x++) solid[y * CW + x] = 1;
     });
-    var covTex = new THREE.CanvasTexture(covCanvas);
-    covTex.encoding = THREE.sRGBEncoding;
-    var covMat = new THREE.MeshBasicMaterial({ map: covTex, transparent: true, opacity: 0, depthWrite: false });
-    var covPlane = new THREE.Mesh(new THREE.PlaneGeometry(60, 40), covMat);
-    covPlane.rotation.x = -Math.PI / 2;
-    covPlane.position.y = 0.015;
-    scene.add(covPlane);
-
     function paintCoverage(polys) {
       cctx.globalCompositeOperation = 'source-over';
       cctx.clearRect(0, 0, CW, CH);
@@ -944,143 +560,279 @@
         cctx.closePath();
         cctx.fill();
       });
-      var src = cctx.getImageData(0, 0, CW, CH).data, dst = outImg.data;
+      var src = cctx.getImageData(0, 0, CW, CH).data, dst = covImg.data;
       for (var i = 0, px = 0; i < src.length; i += 4, px++) {
         if (solid[px]) { dst[i + 3] = 0; continue; }
         var n = Math.round(src[i + 2] / 40);
         if (n === 0) {
-          var x = px % CW, y = (px / CW) | 0, stripe = (x + y) % 8 < 3;
-          dst[i] = 214; dst[i + 1] = 72; dst[i + 2] = 84; dst[i + 3] = stripe ? 230 : 70;
+          var x = px % CW, y = (px / CW) | 0;
+          dst[i] = 236; dst[i + 1] = 106; dst[i + 2] = 58; dst[i + 3] = (x + y) % 7 < 2 ? 215 : 34;
         } else if (n === 1) {
-          dst[i] = 64; dst[i + 1] = 176; dst[i + 2] = 104; dst[i + 3] = 150;
+          dst[i] = 47; dst[i + 1] = 107; dst[i + 2] = 240; dst[i + 3] = 105;
         } else {
-          dst[i] = 66; dst[i + 1] = 136; dst[i + 2] = 222; dst[i + 3] = 175;
+          dst[i] = 130; dst[i + 1] = 169; dst[i + 2] = 255; dst[i + 3] = 150;
         }
       }
-      vctx.putImageData(outImg, 0, 0);
-      covTex.needsUpdate = true;
+      vctx.putImageData(covImg, 0, 0);
     }
 
-    // Light volume: a fan from the lens down to where each ray meets a wall or its range.
-    function updateVolume(cam, p, poly) {
-      var a = p.dir * Math.PI / 180, lens = cam.model.userData.lens;
-      var ax = X(p.x) + Math.cos(a) * lens.f, ay = MOUNT + lens.y, az = Z(p.y) + Math.sin(a) * lens.f;
-      var pos = cam.vol.geometry.attributes.position.array, k = 0;
-      var pts = (poly.length - 2) / 2;
-      for (var i = 0; i < pts - 1 && k < pos.length - 9; i++) {
-        var x0 = X(poly[2 + i * 2]), z0 = Z(poly[3 + i * 2]), x1 = X(poly[4 + i * 2]), z1 = Z(poly[5 + i * 2]);
-        pos[k++] = ax; pos[k++] = ay; pos[k++] = az;
-        pos[k++] = x0; pos[k++] = 0.02; pos[k++] = z0;
-        pos[k++] = x1; pos[k++] = 0.02; pos[k++] = z1;
+    /* the model: walls, columns, furniture, people, sorted back to front */
+    var PAL = {
+      wall: { t: '#F2F4F7', s: ['#9FAAB7', '#D3D9E0'], e: ['#8390A0', '#B3BDC8'], edge: 'rgba(255, 255, 255, 0.85)' },
+      column: { t: '#E3E7EC', s: ['#96A2B0', '#C5CCD5'], e: ['#7C8898', '#A8B2BF'], edge: 'rgba(255, 255, 255, 0.6)' },
+      wood: { t: '#C9A37D', s: ['#8F6F4C', '#A5825C'], e: ['#775C40', '#8D6D4D'] },
+      metal: { t: '#5A6574', s: ['#2E3641', '#3F4855'], e: ['#252C35', '#343C47'] },
+      fabric: { t: '#7489A8', s: ['#4D6080', '#5E7291'], e: ['#415270', '#51637F'] },
+      counter: { t: '#E8EBEF', s: ['#A9B2BE', '#CBD1D9'], e: ['#8E99A6', '#B0B9C4'], edge: 'rgba(255, 255, 255, 0.6)' }
+    };
+    var items = [];
+    function addBox(x0, y0, x1, y1, h, kind, extra) {
+      items.push({ x0: x0, y0: y0, x1: x1, y1: y1, h: h, kind: kind, extra: extra, depth: (x0 + x1 + y0 + y1) / 2 });
+    }
+    PLAN.walls.slice(0, PLAN.structural).forEach(function (w, i) {
+      var T = i < 4 ? 3 : 1.6;
+      addBox(Math.min(w[0], w[2]) - T / 2, Math.min(w[1], w[3]) - T / 2, Math.max(w[0], w[2]) + T / 2, Math.max(w[1], w[3]) + T / 2, WALL, 'wall');
+    });
+    PLAN.columns.forEach(function (c) { addBox(c[0], c[1], c[0] + PLAN.COL, c[1] + PLAN.COL, WALL, 'column'); });
+    function around(cx, cy, hw, hd, h, kind, extra) { addBox(cx - hw, cy - hd, cx + hw, cy + hd, h, kind, extra); }
+    [[385, 70], [435, 70], [385, 110], [435, 110], [525, 70], [575, 70], [525, 110], [575, 110]].forEach(function (d) {
+      around(d[0], d[1], 8, 4, 7.4, 'wood');
+      around(d[0], d[1] - 2, 3, 0.4, 11, 'metal');
+    });
+    [370, 390, 410, 430].forEach(function (x) { around(x, 345, 3.1, 5.5, 20, 'metal', 'leds'); around(x, 385, 3.1, 5.5, 20, 'metal', 'leds'); });
+    around(168, 355, 2.5, 30, 21, 'metal');
+    around(110, 312, 20, 2.5, 21, 'metal');
+    around(260, 385, 18, 4.5, 7.6, 'wood');
+    around(260, 413, 16, 0.6, 20, 'metal');
+    around(550, 360, 12, 5.5, 7.4, 'wood');
+    [[400, 180], [400, 210], [470, 180], [470, 210], [540, 180], [540, 210]].forEach(function (b) { around(b[0], b[1], 17, 2.75, 4.5, 'fabric'); });
+    [80, 125, 170].forEach(function (x) { around(x, 55, 16, 4, 10.5, 'counter'); });
+    var people = [[100, 130], [150, 95], [220, 160], [280, 90], [200, 235], [440, 195], [510, 242], [300, 180]];
+    var clothes = ['#5D7394', '#9B7A62', '#6E8A6E', '#A7AFBA', '#8C6A83', '#6A8CB0', '#B09A62', '#7F8FA6'];
+    people.forEach(function (p, i) { items.push({ person: true, x: p[0], y: p[1], col: clothes[i], depth: p[0] + p[1] }); });
+    items.sort(function (a, b) { return a.depth - b.depth; });
+
+    function quad(p0, p1, p2, p3) {
+      ctx.beginPath();
+      ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.lineTo(p3[0], p3[1]);
+      ctx.closePath();
+    }
+    function shade(p0, p1, stops) {
+      var g = ctx.createLinearGradient(p0[0], p0[1], p1[0], p1[1]);
+      g.addColorStop(0, stops[0]); g.addColorStop(1, stops[1]);
+      return g;
+    }
+    function drawBox(b, h) {
+      var pal = PAL[b.kind];
+      var s0 = iso(b.x0, b.y1, 0), s1 = iso(b.x1, b.y1, 0), s2 = iso(b.x1, b.y1, h), s3 = iso(b.x0, b.y1, h);
+      quad(s0, s1, s2, s3); ctx.fillStyle = shade(s0, s3, pal.s); ctx.fill();
+      var e0 = iso(b.x1, b.y0, 0), e2 = iso(b.x1, b.y0, h);
+      quad(e0, s1, s2, e2); ctx.fillStyle = shade(e0, e2, pal.e); ctx.fill();
+      var t0 = iso(b.x0, b.y0, h);
+      quad(t0, e2, s2, s3); ctx.fillStyle = pal.t; ctx.fill();
+      if (pal.edge) { ctx.strokeStyle = pal.edge; ctx.lineWidth = 0.5; ctx.stroke(); }
+      if (b.extra === 'leds' && h > 12) {
+        for (var k = 0; k < 5; k++) {
+          var l = iso(b.x0 + 1.2, b.y1, h - 3 - k * 3.2);
+          ctx.fillStyle = k % 2 ? '#5CE0A0' : '#82A9FF';
+          ctx.fillRect(l[0], l[1], 1.1, 0.8);
+        }
       }
-      cam.vol.geometry.setDrawRange(0, k / 3);
-      cam.vol.geometry.attributes.position.needsUpdate = true;
-      var e = cam.edge.geometry.attributes.position.array;
-      e[0] = X(poly[2]); e[1] = 0.02; e[2] = Z(poly[3]);
-      e[3] = ax; e[4] = ay; e[5] = az;
-      e[6] = X(poly[poly.length - 2]); e[7] = 0.02; e[8] = Z(poly[poly.length - 1]);
-      cam.edge.geometry.attributes.position.needsUpdate = true;
+    }
+    function drawPerson(p, rise) {
+      if (rise < 0.95) return;
+      var f = iso(p.x, p.y, 0), hip = iso(p.x, p.y, 8.5), neck = iso(p.x, p.y, 14.5), head = iso(p.x, p.y, 16.6);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+      ctx.beginPath(); ctx.ellipse(f[0] + 1.2, f[1] + 0.3, 3, 1.4, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#2B323B'; ctx.lineCap = 'round'; ctx.lineWidth = 2.4;
+      ctx.beginPath(); ctx.moveTo(f[0] - 0.8, f[1]); ctx.lineTo(hip[0] - 0.4, hip[1]); ctx.moveTo(f[0] + 0.8, f[1]); ctx.lineTo(hip[0] + 0.4, hip[1]); ctx.stroke();
+      ctx.strokeStyle = p.col; ctx.lineWidth = 4.2;
+      ctx.beginPath(); ctx.moveTo(hip[0], hip[1] - 1); ctx.lineTo(neck[0], neck[1]); ctx.stroke();
+      ctx.fillStyle = '#D2A585';
+      ctx.beginPath(); ctx.arc(head[0], head[1], 1.9, 0, Math.PI * 2); ctx.fill();
     }
 
-    var lastAim = -1;
+    /* camera glyphs, drawn at mounting height */
+    var DOMES = { 0: 1, 1: 1, 2: 1, 11: 1 };
+    function drawCamera(i, p, alpha) {
+      if (alpha <= 0) return;
+      var a = p.dir * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a);
+      ctx.globalAlpha = alpha;
+      ctx.lineCap = 'round';
+      if (DOMES[i]) {
+        var m = iso(p.x, p.y, MOUNT + 1.5);
+        ctx.fillStyle = '#131A23';
+        ctx.beginPath(); ctx.ellipse(m[0], m[1] + 1.2, 4.3, 3.6, 0, 0, Math.PI); ctx.fill();
+        ctx.fillStyle = '#EEF1F5';
+        ctx.beginPath(); ctx.ellipse(m[0], m[1], 5.2, 2.6, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#B9C2CD'; ctx.lineWidth = 0.5; ctx.stroke();
+        var l = iso(p.x + ca * 2.2, p.y + sa * 2.2, MOUNT - 1.5);
+        ctx.fillStyle = C.glow;
+        ctx.beginPath(); ctx.arc(l[0], l[1] + 1.2, 0.9, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.beginPath(); ctx.ellipse(m[0] - 1.6, m[1] + 2.4, 0.9, 0.5, -0.4, 0, Math.PI * 2); ctx.fill();
+      } else {
+        var wallPt = iso(p.x - ca * 2.5, p.y - sa * 2.5, MOUNT + 1), m0 = iso(p.x + ca * 2, p.y + sa * 2, MOUNT);
+        var m1 = iso(p.x + ca * 15, p.y + sa * 15, MOUNT - 4);
+        ctx.strokeStyle = '#8D99A8'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(wallPt[0], wallPt[1]); ctx.lineTo(m0[0], m0[1] + 0.5); ctx.stroke();
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)'; ctx.lineWidth = 4.6;
+        ctx.beginPath(); ctx.moveTo(m0[0] + 0.6, m0[1] + 1.4); ctx.lineTo(m1[0] + 0.6, m1[1] + 1.4); ctx.stroke();
+        ctx.strokeStyle = '#E4E8ED'; ctx.lineWidth = 4.4;
+        ctx.beginPath(); ctx.moveTo(m0[0], m0[1]); ctx.lineTo(m1[0], m1[1]); ctx.stroke();
+        ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 1.3;
+        ctx.beginPath(); ctx.moveTo(m0[0] - 0.3, m0[1] - 2.4); ctx.lineTo(m1[0] + (m1[0] - m0[0]) * 0.08, m1[1] - 2.6 + (m1[1] - m0[1]) * 0.08); ctx.stroke();
+        ctx.fillStyle = '#0B0F14';
+        ctx.beginPath(); ctx.arc(m1[0], m1[1], 1.9, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = C.glow; ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.arc(m1[0], m1[1], 0.9, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+    function lensOf(i, p) {
+      var a = p.dir * Math.PI / 180;
+      return DOMES[i] ? iso(p.x + Math.cos(a) * 2.2, p.y + Math.sin(a) * 2.2, MOUNT - 0.5) : iso(p.x + Math.cos(a) * 15, p.y + Math.sin(a) * 15, MOUNT - 4);
+    }
+
+    /* light beam: the fan from the lens to the floor, lit at the lens */
+    function drawBeam(i, p, poly, alpha) {
+      if (alpha <= 0) return;
+      var apex = lensOf(i, p), reach = p.range * S;
+      var g = ctx.createRadialGradient(apex[0], apex[1], 0, apex[0], apex[1], reach);
+      g.addColorStop(0, 'rgba(170, 200, 255, ' + (0.34 * alpha) + ')');
+      g.addColorStop(0.35, 'rgba(110, 155, 255, ' + (0.14 * alpha) + ')');
+      g.addColorStop(1, 'rgba(47, 107, 240, 0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(apex[0], apex[1]);
+      for (var k = 2; k < poly.length; k += 2) { var q = iso(poly[k], poly[k + 1], 0); ctx.lineTo(q[0], q[1]); }
+      ctx.closePath();
+      ctx.fill();
+      var first = iso(poly[2], poly[3], 0), last = iso(poly[poly.length - 2], poly[poly.length - 1], 0);
+      ctx.strokeStyle = 'rgba(170, 200, 255, ' + (0.55 * alpha) + ')';
+      ctx.lineWidth = 0.6;
+      ctx.beginPath(); ctx.moveTo(first[0], first[1]); ctx.lineTo(apex[0], apex[1]); ctx.lineTo(last[0], last[1]); ctx.stroke();
+    }
+
+    var CLOSE = 5;
+    var A = PLAN.coverage(0).share, B = PLAN.coverage(1).share;
+    var lastAim = -1, poses = [], polys = [];
     function updateAim(k) {
       if (k === lastAim) return;
       lastAim = k;
-      var polys = [];
-      cams.forEach(function (cam) {
-        var p = PLAN.pose(cam.plan, k);
-        var poly = PLAN.fieldPolygon(p);
-        polys.push(poly);
-        cam.model.rotation.y = -p.dir * Math.PI / 180;
-        updateVolume(cam, p, poly);
-      });
+      poses = PLAN.cams.map(function (c) { return PLAN.pose(c, k); });
+      polys = poses.map(PLAN.fieldPolygon);
       paintCoverage(polys);
     }
 
-    /* the view: an overview that dives to one camera and back */
-    var CLOSE = 5;
-    var closeCam = PLAN.cams[CLOSE];
-    var closeEye = new THREE.Vector3(X(closeCam.x) + 3.1, 2.55, Z(closeCam.y) - 4.3);
-    var closeTarget = new THREE.Vector3(X(closeCam.x) + 0.15, 2.45, Z(closeCam.y) - 0.55);
-    var eye = new THREE.Vector3(), target = new THREE.Vector3();
-    function overview(t, outEye, outTarget) {
-      var th = -0.42 + 0.018 * t;
-      outEye.set(Math.sin(th) * 60, 43, Math.cos(th) * 60);
-      outTarget.set(0, 0, 1.5);
-    }
-
-    var readout = document.getElementById('pipeline-cov');
-    var readoutBox = root.querySelector('.player__readout');
-    var legend = root.querySelector('.player__legend');
-    var A = PLAN.coverage(0).share, B = PLAN.coverage(1).share;
-    var floorDark = new THREE.Color('#223149'), floorLight = new THREE.Color('#ffffff');
-
     var phases = [
       { start: 0, end: 2.6, caption: 'Reads the architect’s DXF and the camera layout.' },
-      { start: 2.6, end: 7.0, caption: 'Builds the 3D building and mounts each camera model.' },
+      { start: 2.6, end: 7.0, caption: 'Builds the building in 3D and mounts each camera model.' },
       { start: 7.0, end: 10.0, caption: 'Traces what every camera sees, square metre by square metre.' },
       { start: 10.0, end: 16.0, caption: 'Re-aims the same cameras. No covered floor is lost.' }
     ];
 
-    function draw(t) {
-      // DXF lines, then the slab takes its finish
-      lineGeo.setDrawRange(0, Math.round(segCount * clamp01(t / 2.3)) * 2);
-      lineMat.opacity = t < 2.8 ? 1 : clamp01(1 - (t - 2.8) / 1.4);
-      dxf.visible = lineMat.opacity > 0;
-      matFloor.color.copy(floorDark).lerp(floorLight, easeInOut(clamp01((t - 2.6) / 1.6)));
-
-      // walls rise
-      var rise = easeInOut(clamp01((t - 2.7) / 1.7));
-      walls.scale.y = Math.max(0.001, rise);
-      walls.visible = rise > 0.002;
-
-      // cameras mount, one after another
-      cams.forEach(function (cam, i) {
-        var pop = clamp01((t - 4.0 - i * 0.05) / 0.45);
-        var s = pop <= 0 ? 0.0001 : MODEL_SCALE * (pop < 1 ? 1 + 0.15 * Math.sin(pop * Math.PI) : 1) * easeInOut(pop);
-        cam.model.scale.setScalar(Math.max(0.0001, s));
-      });
-
-      // coverage: the close-up camera first, then everyone
+    function draw(t, scale) {
       var aim = easeInOut(clamp01((t - 10.3) / 2.5));
       updateAim(aim);
+      var rise = easeInOut(clamp01((t - 2.7) / 1.7));
+      var h = WALL * rise;
       var allIn = clamp01((t - 8.2) / 1.4);
-      cams.forEach(function (cam, i) {
-        var o = i === CLOSE ? Math.max(clamp01((t - 7.0) / 0.8), allIn) : allIn;
-        cam.vol.material.opacity = 0.085 * o;
-        cam.edge.material.opacity = 0.55 * o;
-      });
-      covMat.opacity = 0.9 * allIn;
 
-      // camera path
-      overview(t, eye, target);
-      var dive = t < 4.6 ? 0 : t < 6.2 ? easeInOut((t - 4.6) / 1.6) : t < 7.8 ? 1 : 1 - easeInOut(clamp01((t - 7.8) / 1.8));
-      eye.lerp(closeEye, dive);
-      target.lerp(closeTarget, dive);
-      view.position.copy(eye);
-      view.lookAt(target);
+      // camera move: zoom onto one camera, then back out
+      var zoomK = t < 4.8 ? 0 : t < 6.2 ? easeInOut((t - 4.8) / 1.4) : t < 7.8 ? 1 : 1 - easeInOut(clamp01((t - 7.8) / 1.4));
+      var Z = 1 + 1.9 * zoomK;
+      var F = lensOf(CLOSE, PLAN.pose(PLAN.cams[CLOSE], aim));
+      var tx = F[0] * (1 - Z) + (W * 0.36 - F[0]) * zoomK, ty = F[1] * (1 - Z) + (H * 0.5 - F[1]) * zoomK;
 
-      if (readoutBox) readoutBox.style.opacity = t >= 8.8 ? 1 : 0;
-      if (legend) legend.style.opacity = t >= 8.8 ? 1 : 0;
-      readout.textContent = ((A + (B - A) * aim) * 100).toFixed(1) + '%';
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.fillStyle = C.bg;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.setTransform(scale * Z, 0, 0, scale * Z, scale * tx, scale * ty);
 
-      renderer.render(scene, view);
-    }
-
-    function size() {
-      var cssW = canvas.clientWidth || W;
-      var cssH = Math.round(cssW * H / W);
-      var buf = renderer.getSize(new THREE.Vector2());
-      if (buf.x !== cssW || buf.y !== cssH) {
-        renderer.setSize(cssW, cssH, false);
-        view.aspect = cssW / cssH;
-        view.updateProjectionMatrix();
+      // slab shadow, floor finishes fading in after the plan step
+      var c0 = iso(20, 20, 0), c1 = iso(620, 20, 0), c2 = iso(620, 420, 0), c3 = iso(20, 420, 0);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+      quad([c0[0] + 6, c0[1] + 8], [c1[0] + 6, c1[1] + 8], [c2[0] + 6, c2[1] + 8], [c3[0] + 6, c3[1] + 8]);
+      ctx.fill();
+      ctx.fillStyle = '#15243A';
+      quad(c0, c1, c2, c3);
+      ctx.fill();
+      var finish = easeInOut(clamp01((t - 2.6) / 1.4));
+      ctx.save();
+      ctx.transform(CX, CY, -CX, CY, OX, OY);
+      if (finish > 0) {
+        ctx.globalAlpha = finish;
+        ctx.drawImage(floorLayer, 20, 20, 600, 400);
       }
-      return 1;
+      if (allIn > 0) {
+        ctx.globalAlpha = allIn;
+        ctx.drawImage(covLayer, 20, 20, 600, 400);
+      }
+      ctx.restore();
+      ctx.globalAlpha = 1;
+
+      // DXF: lines drawn one after another, fading as the walls rise
+      var pPlan = clamp01(t / 2.3);
+      var lineAlpha = t < 2.7 ? 1 : clamp01(1 - (t - 2.7) / 0.8);
+      if (lineAlpha > 0) {
+        ctx.strokeStyle = 'rgba(159, 192, 255, ' + lineAlpha + ')';
+        ctx.lineWidth = 1.4;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        var n = PLAN.structural;
+        for (var i = 0; i < n; i++) {
+          var f = clamp01((pPlan - (i / n) * 0.7) / 0.3);
+          if (f <= 0) continue;
+          var w = PLAN.walls[i], a0 = iso(w[0], w[1], 0), a1 = iso(w[0] + (w[2] - w[0]) * f, w[1] + (w[3] - w[1]) * f, 0);
+          ctx.moveTo(a0[0], a0[1]); ctx.lineTo(a1[0], a1[1]);
+        }
+        ctx.stroke();
+        if (t < 3.2) {
+          ctx.save();
+          ctx.setTransform(scale, 0, 0, scale, 0, 0);
+          ctx.globalAlpha = lineAlpha * clamp01(t * 3);
+          ctx.fillStyle = C.mute;
+          ctx.font = '500 13px "IBM Plex Mono", ui-monospace, monospace';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'alphabetic';
+          ctx.fillText('ground_floor.dxf · ' + Math.round(clamp01(pPlan / 0.7) * n) + ' walls · 12 cameras', 24, H - 24);
+          ctx.restore();
+        }
+      }
+
+      // walls, furniture and people, back to front
+      if (h > 0.2) {
+        items.forEach(function (it) {
+          if (it.person) drawPerson(it, rise);
+          else drawBox(it, it.kind === 'wall' || it.kind === 'column' ? h : it.h * rise);
+        });
+      }
+
+      // light beams, then the cameras on top
+      poses.forEach(function (p, i) {
+        var beam = i === CLOSE ? Math.max(clamp01((t - 7.0) / 0.8), allIn) : allIn;
+        drawBeam(i, p, polys[i], beam);
+      });
+      poses.forEach(function (p, i) { drawCamera(i, p, clamp01((t - 4.0 - i * 0.05) / 0.4)); });
+
+      // the loop closes with a fade to the background
+      var fadeOut = clamp01((t - 15.3) / 0.7);
+      if (fadeOut > 0) {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.globalAlpha = fadeOut;
+        ctx.fillStyle = C.bg;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.globalAlpha = 1;
+      }
+
+      var showUI = t >= 8.8 && fadeOut < 0.5;
+      if (readoutBox) readoutBox.style.opacity = showUI ? 1 : 0;
+      if (legend) legend.style.opacity = showUI ? 1 : 0;
+      readout.textContent = ((A + (B - A) * aim) * 100).toFixed(1) + '%';
     }
 
-    makePlayer({ root: root, canvas: canvas, phases: phases, w: W, h: H, draw: draw, size: size, rest: 15.9, caption: document.getElementById('pipeline-caption') });
-    return true;
+    makePlayer({ root: root, canvas: canvas, phases: phases, w: W, h: H, draw: draw, rest: 14.5, caption: document.getElementById('pipeline-caption') });
   }
 
   /* ------------------------------------------------------------------ */
@@ -1559,7 +1311,7 @@
   }
 
   initPlan();
-  if (!initPipeline3D()) initPipeline();
+  initPipeline();
   initDori();
   initSentinel();
   initCountUp();
