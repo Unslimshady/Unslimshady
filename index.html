@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>HawQ-ai · Prove what every camera will see</title>
+<meta name="description" content="HawQ-ai simulates security camera systems inside the building. VanGuard turns a CAD floor plan into a DORI coverage audit with settings your brackets can reach. Sentinel is coming.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="HawQ-ai · Prove what every camera will see">
+<meta property="og:description" content="VanGuard turns a CAD floor plan into a DORI coverage audit, with settings your brackets can reach. Available now.">
+<meta name="theme-color" content="#0B1726">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<div class="strip">
+  <div class="wrap strip__inner">
+    <span>Meeting us at Bits &amp; Pretzels in Munich?</span>
+    <a href="mailto:contact@hawq-ai.com?subject=Bits%20%26%20Pretzels%20meeting">Book 20 minutes with the founders</a>
+  </div>
+</div>
+
+<header class="nav">
+  <div class="wrap nav__inner">
+    <a class="brand" href="#top" aria-label="HawQ-ai home">
+      <svg class="brand__mark" viewBox="0 0 32 32" aria-hidden="true"><rect x="1" y="1" width="30" height="30" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 25 L7 9 A16 16 0 0 1 23 25 Z" fill="currentColor" opacity=".35"/><path d="M7 25 L7 15 A10 10 0 0 1 17 25 Z" fill="currentColor"/><circle cx="7" cy="25" r="2.6" fill="currentColor"/></svg>
+      <span class="brand__word">HawQ-ai</span>
+    </a>
+    <nav class="nav__links" aria-label="Main">
+      <a href="#vanguard">VanGuard</a>
+      <a href="#sentinel">Sentinel</a>
+      <a href="#team">Team</a>
+    </nav>
+    <a class="btn btn--primary btn--sm" href="mailto:contact@hawq-ai.com?subject=VanGuard%20demo%20request">Book a demo</a>
+  </div>
+</header>
+
+<main id="main">
+
+<!-- HERO ---------------------------------------------------------------->
+<section class="hero band band--ink" id="top">
+  <div class="wrap hero__grid">
+    <div class="hero__copy">
+      <p class="eyebrow eyebrow--glow">Security camera simulation</p>
+      <h1 class="display">Prove what every camera will see, before it’s installed.</h1>
+      <p class="lede">HawQ-ai rebuilds the building from its plan and measures what each security camera really covers, at the level of detail it has to deliver.</p>
+      <div class="hero__actions">
+        <a class="btn btn--primary" href="mailto:contact@hawq-ai.com?subject=VanGuard%20demo%20request">Book a demo</a>
+        <a class="btn btn--ghost" href="#how">How VanGuard works</a>
+      </div>
+      <ul class="products" aria-label="Products">
+        <li class="product">
+          <span class="product__name">VanGuard</span>
+          <span class="status status--live">Available now</span>
+          <span class="product__desc">Coverage audit from the CAD plan</span>
+        </li>
+        <li class="product">
+          <span class="product__name">Sentinel</span>
+          <span class="status status--soon">In development</span>
+          <span class="product__desc">The same audit on the real site</span>
+        </li>
+      </ul>
+    </div>
+
+    <figure class="sheet" aria-label="Illustrative floor plan showing camera coverage as drawn and with VanGuard settings">
+      <div class="sheet__bar">
+        <div class="seg" role="group" aria-label="Camera configuration">
+          <button type="button" class="seg__btn" id="cfg-drawn" aria-pressed="true">As drawn</button>
+          <button type="button" class="seg__btn" id="cfg-vanguard" aria-pressed="false">VanGuard settings</button>
+        </div>
+        <ul class="legend" aria-label="Legend">
+          <li><span class="key key--covered"></span>Covered</li>
+          <li><span class="key key--multi"></span>2+ cameras</li>
+          <li><span class="key key--blind"></span>Blind</li>
+        </ul>
+      </div>
+      <div class="sheet__canvas">
+        <canvas id="plan" width="640" height="440" role="img" aria-label="Floor plan with twelve cameras, their fields of view blocked by walls and columns, and blind areas hatched"></canvas>
+      </div>
+      <dl class="readout">
+        <div><dt>Floor covered</dt><dd id="ro-covered">–</dd></div>
+        <div><dt>Blind area</dt><dd id="ro-blind">–</dd></div>
+        <div><dt>Cameras added</dt><dd>0</dd></div>
+      </dl>
+      <figcaption class="titleblock">
+        <span>Illustrative ground floor</span>
+        <span>60 × 40 m</span>
+        <span>Grid 5 m</span>
+        <span>12 cameras</span>
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- PROBLEM ------------------------------------------------------------->
+<section class="band band--paper" aria-labelledby="problem-title">
+  <div class="wrap stack">
+    <div class="section-head">
+      <p class="eyebrow">The problem</p>
+      <h2 class="h2" id="problem-title">Camera plans are drawn in 2D. Blind spots show up after installation.</h2>
+    </div>
+    <div class="trio">
+      <article class="trio__item">
+        <h3 class="h3">The building</h3>
+        <p>Walls, columns, glazing and ceiling height decide what a camera can actually see.</p>
+      </article>
+      <article class="trio__item">
+        <h3 class="h3">The camera</h3>
+        <p>Mounting height, tilt and lens decide how many pixels land on a person.</p>
+      </article>
+      <article class="trio__item">
+        <h3 class="h3">The requirement</h3>
+        <p>Detecting a silhouette and identifying a face need very different detail. Most tools check a theoretical field of view, one camera at a time.</p>
+      </article>
+    </div>
+    <p class="pullline">Moving a camera once it is installed means a new bracket, new cabling and another site visit. VanGuard finds the problem on the plan.</p>
+  </div>
+</section>
+
+<!-- VANGUARD ------------------------------------------------------------>
+<section class="band band--white" id="vanguard" aria-labelledby="vanguard-title">
+  <div class="wrap stack stack--lg">
+    <div class="product-head">
+      <div class="product-head__name">
+        <span class="wordmark">VanGuard</span>
+        <span class="status status--live status--on-light">Available now</span>
+      </div>
+      <h2 class="h2" id="vanguard-title">From the CAD plan to a coverage audit you can defend.</h2>
+      <p class="lede lede--dark">VanGuard reads the architect’s DXF plan and the integrator’s camera layout, builds the building in 3D, and measures room by room what each camera sees at its required DORI level. It then proposes settings your brackets can reach and writes the reports for decision-makers and installers.</p>
+    </div>
+
+    <ol class="steps" id="how" aria-label="How VanGuard works">
+      <li class="step">
+        <span class="step__n">01</span>
+        <h3 class="h3">Import the plan</h3>
+        <p>Drop the architect’s DXF. Units, layers and camera symbols are recognised, and anything unreadable is flagged before you go further.</p>
+        <span class="step__meta">DXF · camera layout</span>
+      </li>
+      <li class="step">
+        <span class="step__n">02</span>
+        <h3 class="h3">Build the 3D building</h3>
+        <p>Walls, openings, columns, glazing and ceilings are generated automatically. Walk through it at eye level.</p>
+        <span class="step__meta">Generated in 1–2 min</span>
+      </li>
+      <li class="step">
+        <span class="step__n">03</span>
+        <h3 class="h3">Measure real coverage</h3>
+        <p>Every square metre is tested against every camera: covered, seen by several cameras, or blind, at each camera’s DORI level.</p>
+        <span class="step__meta">EN 62676-4</span>
+      </li>
+      <li class="step">
+        <span class="step__n">04</span>
+        <h3 class="h3">Optimise and export</h3>
+        <p>A proposed height, tilt and focal length for each camera, within what its bracket allows. Then a printable report for decision-makers and a camera-by-camera schedule for installers.</p>
+        <span class="step__meta">Report · schedule · CSV</span>
+      </li>
+    </ol>
+
+    <div class="dori" aria-labelledby="dori-title">
+      <div class="dori__text">
+        <h3 class="h3" id="dori-title">The required detail, in metres</h3>
+        <p>DORI sets how many pixels per metre must land on a person. VanGuard uses the same method as market calculators, so an integrator who re-runs the numbers finds the same distances.</p>
+      </div>
+      <div class="dori__chart">
+        <div class="ruler" role="img" aria-label="Maximum range per DORI level for a 4K dome camera: identify 5.2 metres, recognise 10.3 metres, observe 20.9 metres, detect 51.7 metres">
+          <div class="ruler__bar">
+            <span class="ruler__seg ruler__seg--i" style="--from:0;--to:5.2"></span>
+            <span class="ruler__seg ruler__seg--r" style="--from:5.2;--to:10.3"></span>
+            <span class="ruler__seg ruler__seg--o" style="--from:10.3;--to:20.9"></span>
+            <span class="ruler__seg ruler__seg--d" style="--from:20.9;--to:51.7"></span>
+          </div>
+          <div class="ruler__ticks" aria-hidden="true">
+            <span style="--at:0">0</span><span style="--at:10">10</span><span style="--at:20">20</span><span style="--at:30">30</span><span style="--at:40">40</span><span style="--at:50">50 m</span>
+          </div>
+        </div>
+        <dl class="dori__levels">
+          <div class="lvl"><dt><span class="key key--i"></span>Identify</dt><dd><b>5.2 m</b><span>250 px/m</span></dd></div>
+          <div class="lvl"><dt><span class="key key--r"></span>Recognise</dt><dd><b>10.3 m</b><span>125 px/m</span></dd></div>
+          <div class="lvl"><dt><span class="key key--o"></span>Observe</dt><dd><b>20.9 m</b><span>62.5 px/m</span></dd></div>
+          <div class="lvl"><dt><span class="key key--d"></span>Detect</dt><dd><b>51.7 m</b><span>25 px/m</span></dd></div>
+        </dl>
+        <p class="footnote">Example: 4K dome camera, 3,840 px sensor, 112° field of view at 3.6 mm.</p>
+      </div>
+    </div>
+
+    <div class="proofs" aria-label="What makes the result defensible">
+      <div class="proof">
+        <h3 class="h4">Standard method</h3>
+        <p>DORI ranges follow EN 62676-4, the method used by market calculators.</p>
+      </div>
+      <div class="proof">
+        <h3 class="h4">Every assumption stated</h3>
+        <p>Mounting heights, glazing, doors and ceiling heights are written on screen and in every report.</p>
+      </div>
+      <div class="proof">
+        <h3 class="h4">Nothing hidden in the total</h3>
+        <p>Rooms without a camera and excluded areas are listed with their surface.</p>
+      </div>
+      <div class="proof">
+        <h3 class="h4">Settings you can install</h3>
+        <p>No camera added or moved, no tilt beyond the bracket’s travel, no covered area lost.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- VANGUARD DEMO -------------------------------------------------------->
+<section class="band band--ink demo" id="demo" aria-labelledby="demo-title">
+  <div class="wrap stack">
+    <div class="demo__head">
+      <div>
+        <p class="eyebrow eyebrow--glow">VanGuard demo</p>
+        <h2 class="h2" id="demo-title">An invented building, computed for real.</h2>
+      </div>
+      <p class="demo__intro">Ten rooms, nineteen cameras and no customer data. VanGuard reads the plan, builds the floor in 3D, measures coverage and proposes new settings for the same cameras.</p>
+    </div>
+
+    <dl class="figures">
+      <div class="fig"><dt>Cameras as drawn</dt><dd>88.6<small>%</small></dd><span class="fig__k">floor covered</span></div>
+      <div class="fig fig--accent"><dt>With VanGuard settings</dt><dd>94.3<small>%</small></dd><span class="fig__k">floor covered</span></div>
+      <div class="fig"><dt>Cameras added</dt><dd>0</dd><span class="fig__k">19 cameras, same fixing points</span></div>
+      <div class="fig"><dt>Covered area lost</dt><dd>0<small> m²</small></dd><span class="fig__k">the optimiser forbids it</span></div>
+    </dl>
+
+    <div class="stage" id="vanguard-demo" data-demo="vanguard">
+      <div class="stage__placeholder">
+        <span class="stage__tag">Demo slot</span>
+        <p>The interactive VanGuard demo goes here.</p>
+      </div>
+    </div>
+
+    <p class="footnote footnote--ink">The kitchen has no camera by design and is left out of the total. Counted as blind, the figures would be 83.1% and 88.5%.</p>
+  </div>
+</section>
+
+<!-- AUDIENCE ------------------------------------------------------------>
+<section class="band band--paper" aria-labelledby="who-title">
+  <div class="wrap stack">
+    <div class="section-head">
+      <p class="eyebrow">Who uses VanGuard</p>
+      <h2 class="h2" id="who-title">For the people who design, install and answer for camera systems.</h2>
+    </div>
+    <div class="trio trio--cards">
+      <article class="card">
+        <h3 class="h3">Security integrators</h3>
+        <p>Check a design before the tender and show the client, in square metres, what the system will deliver.</p>
+      </article>
+      <article class="card">
+        <h3 class="h3">Design offices</h3>
+        <p>Optimise camera placement on the plan and hand over a study that anyone can re-calculate.</p>
+      </article>
+      <article class="card">
+        <h3 class="h3">Airports and critical sites</h3>
+        <p>Audit an existing installation from its plan: blind spots, misplaced cameras and where to act first.</p>
+      </article>
+    </div>
+    <div class="cta-row">
+      <a class="btn btn--primary" href="mailto:contact@hawq-ai.com?subject=VanGuard%20demo%20request">Book a VanGuard demo</a>
+      <span class="cta-row__note">30 minutes with the founders, on a real plan.</span>
+    </div>
+  </div>
+</section>
+
+<!-- SENTINEL ------------------------------------------------------------>
+<section class="band band--ink sentinel" id="sentinel" aria-labelledby="sentinel-title">
+  <div class="wrap sentinel__grid">
+    <div class="sentinel__copy">
+      <div class="product-head__name">
+        <span class="wordmark wordmark--light">Sentinel</span>
+        <span class="status status--soon">In development</span>
+      </div>
+      <h2 class="h2" id="sentinel-title">Sentinel runs the same audit on the real site.</h2>
+      <p class="lede">A plan shows the building as designed. Sentinel captures it as built, renders the image each camera will really deliver and tests your detection AI through every view.</p>
+      <ol class="mini-steps">
+        <li><h3 class="h4">Capture the site</h3><p>Photos or a video are enough. Gaussian Splatting turns them into a navigable, photorealistic twin.</p></li>
+        <li><h3 class="h4">Simulate every camera</h3><p>Lens distortion, field of view and resolution, from measured camera models.</p></li>
+        <li><h3 class="h4">Test the detection AI</h3><p>Synthetic people are placed in the scene and your detector is scored through each simulated camera.</p></li>
+      </ol>
+      <div class="hero__actions">
+        <a class="btn btn--light" href="mailto:contact@hawq-ai.com?subject=Sentinel%20early%20access">Join the early access list</a>
+      </div>
+    </div>
+    <figure class="camview" id="sentinel-demo" data-demo="sentinel">
+      <svg id="camview" viewBox="0 0 640 360" role="img" aria-label="Simulated camera view with wide-angle lens distortion; a person is detected with a confidence of 0.91">
+        <rect class="cv-bg" width="640" height="360"/>
+        <g id="camview-grid" class="cv-grid"></g>
+        <g>
+          <circle class="cv-body" cx="398" cy="178" r="11"/>
+          <path class="cv-body" d="M383 193 h30 a6 6 0 0 1 6 6 v42 h-8 v38 h-8 v-38 h-10 v38 h-8 v-38 h-8 v-42 a6 6 0 0 1 6 -6 z"/>
+          <rect class="cv-box" x="370" y="160" width="58" height="126"/>
+          <rect class="cv-tag" x="370" y="140" width="98" height="20"/>
+          <text x="376" y="154" class="cv-label">person 0.91</text>
+        </g>
+        <rect class="cv-hudbg" x="10" y="14" width="190" height="40"/>
+        <rect class="cv-hudbg" x="508" y="330" width="122" height="20"/>
+        <text x="18" y="28" class="cv-hud">CAM 07 · 2.8 mm · 112°</text>
+        <text x="18" y="46" class="cv-hud">k1 −0.22 · 2688 × 1520</text>
+        <text x="622" y="344" text-anchor="end" class="cv-hud">SIMULATED VIEW</text>
+      </svg>
+      <figcaption>Illustration of a simulated camera view. The Sentinel demo goes here.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- TEAM ---------------------------------------------------------------->
+<section class="band band--paper" id="team" aria-labelledby="team-title">
+  <div class="wrap stack">
+    <div class="section-head">
+      <p class="eyebrow">Team</p>
+      <h2 class="h2" id="team-title">Built from research in computer vision and AI security.</h2>
+      <p class="lede lede--dark">HawQ-ai matured for a year at Inria Startup Studio, the deeptech programme of France’s national institute for research in digital science.</p>
+    </div>
+    <div class="people">
+      <article class="person">
+        <span class="person__mono" aria-hidden="true">AL</span>
+        <div>
+          <h3 class="h3">Abdelhadi Lammini</h3>
+          <p class="person__role">CEO</p>
+          <p>PhD in Industry 4.0 on computer vision and the coherence of digital twins. Has deployed AI on video streams and simulated perception systems.</p>
+        </div>
+      </article>
+      <article class="person">
+        <span class="person__mono" aria-hidden="true">SB</span>
+        <div>
+          <h3 class="h3">Soumaya Boussaha</h3>
+          <p class="person__role">Co-founder</p>
+          <p>PhD in cybersecurity. Works on robustness evaluation and the security of systems that handle sensitive data.</p>
+        </div>
+      </article>
+    </div>
+    <ul class="backers" aria-label="Support and partners">
+      <li><span class="backers__k">Maturation</span>Inria Startup Studio</li>
+      <li><span class="backers__k">Research partner</span>Arts et Métiers · LISPEN</li>
+    </ul>
+  </div>
+</section>
+
+<!-- CONTACT ------------------------------------------------------------->
+<section class="band band--signal" id="contact" aria-labelledby="contact-title">
+  <div class="wrap contact">
+    <div>
+      <h2 class="h2" id="contact-title">See VanGuard on a real plan.</h2>
+      <p class="lede">A 30-minute walkthrough of a full audit: the CAD plan, the coverage map, the proposed settings and the installer schedule.</p>
+    </div>
+    <div class="contact__actions">
+      <a class="btn btn--light" href="mailto:contact@hawq-ai.com?subject=VanGuard%20demo%20request">Book a demo</a>
+      <div class="copy">
+        <span class="copy__addr" id="contact-email">contact@hawq-ai.com</span>
+        <button type="button" class="copy__btn" id="copy-email" aria-describedby="contact-email">Copy</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="footer band band--ink">
+  <div class="wrap footer__inner">
+    <div class="footer__brand">
+      <span class="brand__word">HawQ-ai</span>
+      <p>Simulation and validation of AI perception systems.</p>
+    </div>
+    <nav class="footer__links" aria-label="Footer">
+      <a href="#vanguard">VanGuard</a>
+      <a href="#sentinel">Sentinel</a>
+      <a href="#team">Team</a>
+      <a href="mailto:contact@hawq-ai.com">contact@hawq-ai.com</a>
+    </nav>
+    <p class="footer__legal">© 2026 HawQ-ai</p>
+  </div>
+</footer>
+
+<script src="assets/js/site.js"></script>
+</body>
+</html>
