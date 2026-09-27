@@ -12,7 +12,7 @@ npx serve .
 ```
 index.html            all page content
 assets/css/site.css   design tokens (top of file) and styles
-assets/js/site.js     hero floor-plan simulation, Sentinel camera view, copy button
+assets/js/site.js     hero floor plan, VanGuard pipeline, DORI and Sentinel animations, copy button
 assets/favicon.svg
 ```
 
