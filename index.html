@@ -161,11 +161,22 @@
     </dl>
 
     <div class="stage" id="vanguard-demo" data-demo="vanguard">
+      <video class="stage__video" id="vanguard-video" muted playsinline controls preload="metadata" hidden>
+        <source src="assets/media/vanguard-demo.mp4" type="video/mp4">
+      </video>
       <div class="stage__placeholder">
         <span class="stage__tag">Demo slot</span>
         <p>The VanGuard demo recording goes here.</p>
       </div>
     </div>
+    <ol class="chapters" id="vanguard-chapters" aria-label="Jump to a step in the demo" hidden>
+      <li><button type="button" data-t="7"><span>0:07</span>Import</button></li>
+      <li><button type="button" data-t="11"><span>0:11</span>3D building</button></li>
+      <li><button type="button" data-t="29"><span>0:29</span>Cameras</button></li>
+      <li><button type="button" data-t="47"><span>0:47</span>Coverage</button></li>
+      <li><button type="button" data-t="75"><span>1:15</span>Optimise</button></li>
+      <li><button type="button" data-t="125"><span>2:05</span>Reports</button></li>
+    </ol>
 
     <p class="footnote footnote--ink">No customer data. The kitchen has no camera and is left out of the total (83.1% → 88.5% if counted as blind).</p>
   </div>

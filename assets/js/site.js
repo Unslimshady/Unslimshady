@@ -1079,6 +1079,53 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /* Demo video: shown once a file loads; chapters seek; plays in view   */
+  /* ------------------------------------------------------------------ */
+  function initDemoVideo() {
+    var video = document.getElementById('vanguard-video');
+    if (!video) return;
+    var stage = video.parentNode;
+    var placeholder = stage.querySelector('.stage__placeholder');
+    var chapters = document.getElementById('vanguard-chapters');
+    var buttons = chapters ? [].slice.call(chapters.querySelectorAll('button')) : [];
+
+    var inView = false;
+    function play() { var p = video.play(); if (p && p.catch) p.catch(function () {}); }
+
+    function ready() {
+      video.hidden = false;
+      if (placeholder) placeholder.hidden = true;
+      if (chapters) chapters.hidden = false;
+      if (inView && !reduceMotion) play();
+    }
+    video.addEventListener('loadedmetadata', ready);
+    if (video.readyState >= 1) ready();
+
+    buttons.forEach(function (b) {
+      b.addEventListener('click', function () {
+        video.currentTime = parseFloat(b.getAttribute('data-t'));
+        play();
+      });
+    });
+    video.addEventListener('timeupdate', function () {
+      var idx = -1;
+      buttons.forEach(function (b, i) { if (video.currentTime >= parseFloat(b.getAttribute('data-t')) - 0.25) idx = i; });
+      buttons.forEach(function (b, i) { if (i === idx) b.setAttribute('aria-current', 'step'); else b.removeAttribute('aria-current'); });
+    });
+
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          inView = e.isIntersecting;
+          if (video.hidden) return;
+          if (!inView) video.pause();
+          else if (!reduceMotion) play();
+        });
+      }, { threshold: 0.25 }).observe(stage);
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
   /* Copy the contact address                                            */
   /* ------------------------------------------------------------------ */
   function initCopy() {
@@ -1108,5 +1155,6 @@
   initDori();
   initSentinel();
   initCountUp();
+  initDemoVideo();
   initCopy();
 })();

@@ -60,7 +60,8 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-img, svg, canvas { max-width: 100%; }
+img, svg, canvas, video { max-width: 100%; }
+[hidden] { display: none !important; }
 p { margin: 0; }
 h1, h2, h3, h4 { margin: 0; text-wrap: balance; }
 ul, ol, dl, dd { margin: 0; padding: 0; }
@@ -372,3 +373,16 @@ a { color: inherit; }
 @media (max-width: 560px) {
   .player__readout { position: static; display: flex; justify-content: space-between; align-items: baseline; border: 0; border-top: 1px solid var(--ink-line); border-radius: 0; background: var(--ink); }
 }
+
+/* ---------- Demo video ---------- */
+.stage__video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; background: var(--ink); }
+.stage:has(.stage__video:not([hidden])) { min-height: 0; }
+.chapters { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.chapters button {
+  width: 100%; display: grid; gap: 4px; padding: 10px 12px; text-align: left; cursor: pointer;
+  font: 600 0.9375rem/1.2 var(--font-body); color: var(--on-ink-soft);
+  background: var(--ink-2); border: 1px solid var(--ink-line); border-radius: var(--radius);
+}
+.chapters button span { font: 500 0.75rem/1 var(--font-mono); color: var(--signal-glow); }
+.chapters button:hover { color: var(--on-ink); }
+.chapters button[aria-current="step"] { color: var(--on-ink); border-color: var(--signal-glow); box-shadow: inset 0 -3px 0 var(--signal-glow); }
