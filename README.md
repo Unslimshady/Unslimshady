@@ -13,6 +13,7 @@ npx serve .
 index.html            all page content
 assets/css/site.css   design tokens (top of file) and styles
 assets/js/site.js     hero floor plan, VanGuard pipeline, DORI and Sentinel animations, copy button
+assets/vendor/         three.js r128 (MIT, see three.LICENSE) for the 3D VanGuard animation
 assets/favicon.svg
 ```
 
